@@ -1,527 +1,370 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '../../lib/supabase'; // Imeunganishwa na Database
+import { supabase } from '../../lib/supabase';
+
+const CAR_FEATURES_LIST = ['Sunroof', 'Leather Seats', '360 Camera', 'Push to Start', 'Alloy Wheels', 'Bluetooth', 'Navigation System', 'Parking Sensors'];
 
 export default function ClientPortal() {
-  // Authentication States
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-
-  // Dashboard States
-  const [activeTab, setActiveTab] = useState<'tracking' | 'wishlist' | 'payments' | 'sell'>('tracking');
-  const [loading, setLoading] = useState(false);
-
-  // Data States
-  const [savedCars, setSavedCars] = useState<any[]>([]);
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<'sw' | 'en'>('en');
   
-  // Fomu ya Mteja kuuza gari lake (One-time seller)
-  const [sellCar, setSellCar] = useState({ title: '', year: '', price: '', phone: '' });
-  const [sellFile, setSellFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [isLoginMode, setIsLoginMode] = useState(true);
+  const [authData, setAuthData] = useState({ fullName: '', phone: '', email: '', password: '' });
+  const [authLoading, setAuthLoading] = useState(false);
+  const [clientProfile, setClientProfile] = useState<any>(null);
 
-  const clientName = "John Doe";
+  const [activeTab, setActiveTab] = useState('overview');
+  const [myInquiries, setMyInquiries] = useState<any[]>([]);
+  const [myCars, setMyCars] = useState<any[]>([]); 
 
-  const trackedOrders = [
-    { 
-      id: "ORD-99281", 
-      car: "Toyota Crown Athlete 2015", 
-      img: "https://images.unsplash.com/photo-1550427739-cecebea3014a?auto=format&fit=crop&w=150&q=80",
-      step: 3, 
-      eta: "28 March 2026",
-      vessel: "Hoegh Osaka V.112",
-      balance: "Paid in Full (Escrow)"
+  const [sosForm, setSosForm] = useState({ carModel: '', issue: 'General Maintenance (Service)', location: '', date: '', phone: '' });
+  const [sosLoading, setSosLoading] = useState(false);
+
+  const [sellForm, setSellForm] = useState({ make: '', model: '', year: '', price: '', mileage: '', engine_cc: '', transmission: 'Automatic', features: [] as string[], imageFiles: [] as File[], imagePreviews: [] as string[] });
+  const [sellLoading, setSellLoading] = useState(false);
+
+  const t = {
+    en: {
+      authTitle: "Client Portal", authLoginDesc: "Login to track your orders and services.", authRegDesc: "Create an account for a seamless premium experience.",
+      fullName: "Full Name", phone: "Phone Number", email: "Email Address", pass: "Password",
+      loginBtn: "Login to Account", regBtn: "Create Account", switchReg: "Don't have an account? Sign up.", switchLog: "Already have an account? Login.",
+      wait: "Please wait...", logout: "Logout",
+      overview: "Overview", myOrders: "My Orders", wishlist: "Saved Cars", sos: "Book Service", sellCar: "Sell / Trade-In",
+      welcome: "Welcome back,", welcomeDesc: "Manage your premium automotive experience.",
+      statOrders: "Active Orders", statSaved: "Saved Vehicles", statSOS: "Service Requests",
+      promoTitle: "🎁 Special Client Offer!", promoDesc: "Get a FREE full computer diagnostic and 1st maintenance service on your next purchase.",
+      noData: "No records found.", browseBtn: "Browse Showroom",
+      reqDate: "Date", reqType: "Request", reqStatus: "Status", reqDetails: "Details",
+      statusPending: "Pending Review", statusContacted: "Agent Assigned", home: "Back Home",
+      sosBookTitle: "Book a Mechanic / SOS", sosBookDesc: "Request emergency or scheduled maintenance.",
+      carModel: "Vehicle Make & Model", issue: "Service Type / Issue", location: "Your Location", date: "Preferred Date", bookBtn: "Submit Request 🚀",
+      sellTitle: "Sell Your Car / Trade-In", sellDesc: "Upload your car details. Our admins will review and publish it on the showroom.",
+      price: "Asking Price (TZS)", uploadPhotos: "Upload Photos (Max 5)", submitSell: "Submit for Review",
+      statusApproved: "Approved & Live", statusWaiting: "Awaiting Admin Approval"
+    },
+    sw: {
+      authTitle: "Akaunti ya Mteja", authLoginDesc: "Ingia kufuatilia oda na huduma zako.", authRegDesc: "Tengeneza akaunti kwa huduma bora na za haraka.",
+      fullName: "Jina Kamili", phone: "Namba ya Simu", email: "Barua Pepe (Email)", pass: "Nenosiri (Password)",
+      loginBtn: "Ingia Kwenye Akaunti", regBtn: "Tengeneza Akaunti", switchReg: "Huna akaunti? Jisajili hapa.", switchLog: "Unayo akaunti? Ingia hapa.",
+      wait: "Tafadhali subiri...", logout: "Ondoka (Logout)",
+      overview: "Muhtasari", myOrders: "Oda Yangu", wishlist: "Magari Niliyopenda", sos: "Weka Miadi / SOS", sellCar: "Uza Gari / Trade-In",
+      welcome: "Karibu tena,", welcomeDesc: "Fuatilia magari unayoagiza, uliyokodisha, na miadi yako ya mafundi.",
+      statOrders: "Oda Zako", statSaved: "Magari Uliyohifadhi", statSOS: "Maombi ya Fundi",
+      promoTitle: "🎁 Ofa Maalum Kwako!", promoDesc: "Gari lako utakalojipatia linakuja na Ukaguzi wa Kompyuta na Service ya Kwanza BURE.",
+      noData: "Huna kumbukumbu yoyote kwa sasa.", browseBtn: "Nenda Showroom",
+      reqDate: "Tarehe", reqType: "Ombi", reqStatus: "Status", reqDetails: "Maelezo",
+      statusPending: "Inasubiri Wakala", statusContacted: "Wakala Amepangiwa", home: "Rudi Mwanzo",
+      sosBookTitle: "Ita Fundi / Weka Miadi", sosBookDesc: "Omba msaada wa dharura au miadi ya service.",
+      carModel: "Aina ya Gari Lako", issue: "Aina ya Tatizo", location: "Mahali Ulipo", date: "Tarehe", bookBtn: "Tuma Maombi 🚀",
+      sellTitle: "Uza Gari Lako (Trade-In)", sellDesc: "Pakia taarifa za gari lako. Admin wetu atalikagua na kuliweka hewani sokoni.",
+      price: "Bei Unayouza (TZS)", uploadPhotos: "Pakia Picha za Gari", submitSell: "Tuma kwa Ukaguzi",
+      statusApproved: "Lipo Hewani", statusWaiting: "Linasubiri Admin"
     }
-  ];
+  };
+  const currT = t[lang];
 
-  // Vuta magari halisi kwenye Wishlist
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchWishlist();
-    }
-  }, [isAuthenticated]);
+  useEffect(() => { checkSession(); }, []);
 
-  const fetchWishlist = async () => {
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setSession(session);
+    if (session) await fetchClientProfile(session.user.email);
+    else setLoading(false);
+  };
+
+  const fetchClientProfile = async (email: string) => {
     try {
-      // Kwa ajili ya Demo, tunavuta magari machache kutoka kwenye DB kujifanya ni Wishlist
-      const { data, error } = await supabase.from('vehicles').select('*').limit(3);
+      const { data } = await supabase.from('clients').select('*').eq('email', email).single();
       if (data) {
-        const formatted = data.map(car => ({
-          id: car.id,
-          title: `${car.make} ${car.model}`,
-          price: `$${car.fob_price}`,
-          img: car.location,
-          status: car.tag === 'NONE' ? 'Available' : car.tag
-        }));
-        setSavedCars(formatted);
+        setClientProfile(data);
+        fetchClientData(email);
+        setSosForm(prev => ({ ...prev, phone: data.phone }));
       }
-    } catch (error) {
-      console.log(error);
-    }
+    } catch (err) {} finally { setLoading(false); }
   };
 
-  const handleAuth = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthenticated(true);
+  const fetchClientData = async (email: string) => {
+    const { data: inq } = await supabase.from('inquiries').select('*').order('created_at', { ascending: false });
+    if (inq) setMyInquiries(inq.filter(req => req.client_email === email || req.contact_phone === clientProfile?.phone));
+
+    const { data: cars } = await supabase.from('vehicles').select('*').eq('vendor_id', email).order('created_at', { ascending: false });
+    if (cars) setMyCars(cars);
   };
 
-  // Mteja kupost gari lake la mara moja
-  const handleSellPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSellFile(e.target.files[0]);
-    }
-  };
-
-  const submitOneTimeCar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sellCar.title || !sellFile) return alert("Tafadhali weka jina la gari na picha!");
-    
-    setUploading(true);
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault(); setAuthLoading(true);
     try {
-      // 1. Upload Picha
-      const fileExt = sellFile.name.split('.').pop();
-      const uniqueFileName = `c2c-${Math.random()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage.from('car-images').upload(`public/${uniqueFileName}`, sellFile);
-      
-      let finalImageUrl = '';
-      if (!uploadError && uploadData) {
-        const { data: { publicUrl } } = supabase.storage.from('car-images').getPublicUrl(`public/${uniqueFileName}`);
-        finalImageUrl = publicUrl;
+      if (isLoginMode) {
+        const { error } = await supabase.auth.signInWithPassword({ email: authData.email, password: authData.password });
+        if (error) throw error;
+        window.location.reload();
+      } else {
+        const { error: authErr } = await supabase.auth.signUp({ email: authData.email, password: authData.password });
+        if (authErr) throw authErr;
+        await supabase.from('clients').insert([{ full_name: authData.fullName, phone: authData.phone, email: authData.email }]);
+        window.location.reload();
       }
+    } catch (err: any) { alert(`Kosa: ${err.message}`); } finally { setAuthLoading(false); }
+  };
 
-      // 2. Ingiza kwenye Database (Tunaipa Ref ID inayoanza na C2C kuonyesha ni mteja binafsi)
-      const parts = sellCar.title.split(' ');
-      const make = parts[0] || 'Unknown';
-      const model = parts.slice(1).join(' ') || 'Unknown';
+  // HII NDIO FUNCTION ILIYOKUWA INAKOSEKANA (TUMEIONGEZA HAPA) ✅
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload();
+  };
 
-      const { error: dbError } = await supabase.from('vehicles').insert([{
-        stock_id: `C2C-${Math.floor(Math.random() * 10000)}`,
-        make: make,
-        model: model,
-        year: parseInt(sellCar.year) || 2010,
-        fob_price: parseFloat(sellCar.price.replace(/[^0-9.-]+/g,"")) || 0,
-        location: finalImageUrl, 
-        tag: 'NEW' // Mteja akipost inakuwa NEW automatically
+  const submitSosRequest = async (e: React.FormEvent) => {
+    e.preventDefault(); setSosLoading(true);
+    try {
+      const msg = `SERVICE/SOS REQUEST\nGari: ${sosForm.carModel}\nHuduma: ${sosForm.issue}\nEneo: ${sosForm.location}\nTarehe: ${sosForm.date}`;
+      await supabase.from('inquiries').insert([{ client_email: clientProfile.email, contact_phone: sosForm.phone, customer_message: msg }]);
+      alert("Maombi yamepokelewa kikamilifu!");
+      setSosForm({ carModel: '', issue: 'General Maintenance (Service)', location: '', date: '', phone: clientProfile.phone });
+      fetchClientData(clientProfile.email); setActiveTab('orders');
+    } catch (err) {} finally { setSosLoading(false); }
+  };
+
+  const handleMultiImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      const previewsArray = filesArray.map(file => URL.createObjectURL(file));
+      setSellForm(prev => ({ ...prev, imageFiles: [...prev.imageFiles, ...filesArray], imagePreviews: [...prev.imagePreviews, ...previewsArray] }));
+    }
+  };
+
+  const removeImage = (indexToRemove: number) => {
+    setSellForm(prev => ({ ...prev, imageFiles: prev.imageFiles.filter((_, i) => i !== indexToRemove), imagePreviews: prev.imagePreviews.filter((_, i) => i !== indexToRemove) }));
+  };
+
+  const toggleFeature = (feature: string) => {
+    setSellForm({ ...sellForm, features: sellForm.features.includes(feature) ? sellForm.features.filter(f => f !== feature) : [...sellForm.features, feature] });
+  };
+
+  const submitSellCar = async (e: React.FormEvent) => {
+    e.preventDefault(); setSellLoading(true);
+    try {
+      let uploadedUrls: string[] = [];
+      for (const file of sellForm.imageFiles) {
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${file.name.split('.').pop()}`;
+        const { data } = await supabase.storage.from('car-images').upload(`public/${fileName}`, file);
+        if (data) uploadedUrls.push(supabase.storage.from('car-images').getPublicUrl(`public/${fileName}`).data.publicUrl);
+      }
+      
+      const generatedStockId = `C2C-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      const { error } = await supabase.from('vehicles').insert([{
+        stock_id: generatedStockId, vendor_id: clientProfile.email, 
+        make: sellForm.make, model: sellForm.model, year: sellForm.year, category: 'Used', mileage: sellForm.mileage, engine_cc: sellForm.engine_cc, transmission: sellForm.transmission, 
+        location_from: 'TANZANIA', cif_price: Number(sellForm.price), fob_price: 0, 
+        tag: 'USED', features: sellForm.features, location: uploadedUrls[0] || '', gallery: uploadedUrls,
+        approval_status: 'PENDING'
       }]);
 
-      if (dbError) throw dbError;
-
-      alert("Hongera! Gari lako limepokelewa na litatokea kwenye Showroom baada ya ukaguzi.");
-      setSellCar({ title: '', year: '', price: '', phone: '' });
-      setSellFile(null);
-      setActiveTab('tracking');
-
-    } catch (error) {
-      console.error(error);
-      alert("Kuna shida mtandaoni, tafadhali jaribu tena.");
-    } finally {
-      setUploading(false);
-    }
+      if (error) throw error;
+      alert(lang === 'sw' ? "Gari lako limepokelewa na linasubiri uhakiki wa Admin!" : "Vehicle submitted successfully and is awaiting review!");
+      setSellForm({ make: '', model: '', year: '', price: '', mileage: '', engine_cc: '', transmission: 'Automatic', features: [], imageFiles: [], imagePreviews: [] });
+      fetchClientData(clientProfile.email);
+    } catch (err: any) { alert(`Kosa: ${err.message}`); } finally { setSellLoading(false); }
   };
 
-  // ==========================================
-  // 1. AUTHENTICATION SCREEN (LOGIN / REGISTER)
-  // ==========================================
-  if (!isAuthenticated) {
+
+  if (loading && !session) return <div className="min-h-screen bg-[#0B1120] flex items-center justify-center"><div className="animate-pulse text-blue-500 text-6xl">🚘</div></div>;
+
+  if (!session || !clientProfile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans">
-        <div className="md:w-1/2 bg-gray-900 text-white p-12 flex flex-col justify-between relative overflow-hidden">
-          <div className="relative z-10">
-            <Link href="/" className="text-4xl font-extrabold text-blue-500 tracking-tight">
-              Gari<span className="text-white">Hub</span>
-            </Link>
-            <div className="mt-4 inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-              CLIENT PORTAL
-            </div>
-            
-            <div className="mt-16 max-w-md">
-              <h1 className="text-4xl font-black leading-tight mb-6">Njia Salama ya Kuagiza Gari Lako.</h1>
-              <ul className="space-y-6">
-                <li className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-xl shrink-0">🛡️</div>
-                  <div>
-                    <h3 className="font-bold text-lg">100% Malipo Salama</h3>
-                    <p className="text-sm text-gray-400">Pesa zako zinalindwa kupitia mfumo wetu wa Escrow hadi gari likufikie.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-xl shrink-0">🚢</div>
-                  <div>
-                    <h3 className="font-bold text-lg">Fuatilia Meli Yako (Live Tracking)</h3>
-                    <p className="text-sm text-gray-400">Jua gari lako lipo wapi wakati wote kuanzia Japan hadi Bandari ya Dar es Salaam.</p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-xl shrink-0">💰</div>
-                  <div>
-                    <h3 className="font-bold text-lg">Uza Gari Lako Fasta</h3>
-                    <p className="text-sm text-gray-400">Unataka kuuza gari lako la sasa? Lipost hapa liwafikie maelfu ya wanunuzi.</p>
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="relative z-10 mt-16 text-sm text-gray-500">
-            &copy; {new Date().getFullYear()} Gari Hub. All rights reserved.
-          </div>
-          
-          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-blue-600 rounded-full opacity-20 blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-green-500 rounded-full opacity-10 blur-3xl"></div>
+      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center p-4 relative">
+        <div className="absolute top-6 right-6 flex gap-3">
+          <button onClick={() => setLang('en')} className={`text-xs font-bold px-3 py-1 rounded-lg border ${lang === 'en' ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400'}`}>EN</button>
+          <button onClick={() => setLang('sw')} className={`text-xs font-bold px-3 py-1 rounded-lg border ${lang === 'sw' ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400'}`}>SW</button>
         </div>
-
-        <div className="md:w-1/2 bg-white p-8 md:p-16 flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-              {authMode === 'login' ? 'Karibu Tena!' : 'Tengeneza Akaunti'}
-            </h2>
-            <p className="text-gray-500 mb-8">
-              {authMode === 'login' ? 'Ingiza taarifa zako kufikia akaunti yako.' : 'Jisajili ili kuanza kuagiza na kufuatilia magari yako.'}
-            </p>
-
-            <form onSubmit={handleAuth} className="space-y-5">
-              {authMode === 'register' && (
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Majina Kamili</label>
-                  <input type="text" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="John Doe" />
-                </div>
-              )}
-              
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Barua Pepe (Email)</label>
-                <input type="email" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="mteja@email.com" />
-              </div>
-              
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-bold text-gray-700">Neno Siri (Password)</label>
-                  {authMode === 'login' && <a href="#" className="text-xs text-blue-600 font-bold hover:underline">Umesahau?</a>}
-                </div>
-                <input type="password" required className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all" placeholder="••••••••" />
-              </div>
-
-              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-lg shadow-md hover:bg-blue-700 transition-colors mt-4">
-                {authMode === 'login' ? 'Ingia Kwenye Akaunti (Login)' : 'Kamilisha Usajili (Register)'}
-              </button>
-            </form>
-
-            <div className="mt-8 text-center text-sm text-gray-600">
-              {authMode === 'login' ? 'Huna akaunti?' : 'Tayari una akaunti?'}
-              <button onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')} className="ml-2 text-blue-600 font-bold hover:underline">
-                {authMode === 'login' ? 'Jisajili hapa' : 'Ingia hapa'}
-              </button>
-            </div>
-            
-            <div className="mt-12 text-center">
-               <Link href="/" className="text-gray-400 hover:text-gray-800 text-xs font-bold transition-colors">
-                 ← Rudi Mwanzo (Back to Homepage)
-               </Link>
-            </div>
-          </div>
+        <div className="bg-[#0F172A] border border-slate-800 rounded-[2rem] p-8 w-full max-w-md shadow-2xl relative overflow-hidden">
+          <div className="text-center mb-8 relative z-10"><h1 className="text-2xl font-black text-white">{currT.authTitle}</h1><p className="text-slate-400 text-xs mt-2">{isLoginMode ? currT.authLoginDesc : currT.authRegDesc}</p></div>
+          <form onSubmit={handleAuth} className="space-y-4 relative z-10">
+            {!isLoginMode && (
+              <>
+                <div><input type="text" required value={authData.fullName} onChange={e => setAuthData({...authData, fullName: e.target.value})} placeholder={currT.fullName} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3 outline-none focus:border-blue-500" /></div>
+                <div><input type="text" required value={authData.phone} onChange={e => setAuthData({...authData, phone: e.target.value})} placeholder={currT.phone} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3 outline-none focus:border-blue-500" /></div>
+              </>
+            )}
+            <div><input type="email" required value={authData.email} onChange={e => setAuthData({...authData, email: e.target.value})} placeholder={currT.email} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3 outline-none focus:border-blue-500" /></div>
+            <div><input type="password" required value={authData.password} onChange={e => setAuthData({...authData, password: e.target.value})} placeholder={currT.pass} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3 outline-none focus:border-blue-500" /></div>
+            <button type="submit" disabled={authLoading} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl mt-4 uppercase tracking-widest text-xs">{authLoading ? currT.wait : (isLoginMode ? currT.loginBtn : currT.regBtn)}</button>
+          </form>
+          <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-4 text-xs text-slate-400 font-bold hover:text-white transition-colors">{isLoginMode ? currT.switchReg : currT.switchLog}</button>
         </div>
       </div>
     );
   }
 
-  // ==========================================
-  // 2. CLIENT DASHBOARD SCREEN (LOGGED IN)
-  // ==========================================
+  const NavItem = ({ id, icon, label }: { id: string, icon: string, label: string }) => (
+    <button onClick={() => setActiveTab(id)} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><span className="text-lg">{icon}</span> {label}</button>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-800">
-      
-      {/* Top Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-2xl font-extrabold text-blue-600 tracking-tight">
-              Gari<span className="text-gray-900">Hub</span>
-            </Link>
-            <span className="hidden sm:block bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
-              Client Portal
-            </span>
-          </div>
-          
-          <div className="flex items-center gap-6">
-            <button className="text-gray-500 hover:text-gray-800 relative">
-              🔔 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
-            </button>
-            <div className="flex items-center gap-3 border-l border-gray-200 pl-6">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold leading-none">{clientName}</p>
-                <p className="text-xs text-gray-500">Verified Buyer</p>
-              </div>
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-                JD
-              </div>
-              <button onClick={() => setIsAuthenticated(false)} className="ml-2 text-xs text-red-500 font-bold hover:underline">
-                Logout
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-[#0B1120] flex font-sans text-slate-200">
+      <aside className="w-72 bg-[#0F172A] border-r border-slate-800 hidden md:flex flex-col h-screen sticky top-0">
+        <div className="p-6 border-b border-slate-800 text-center pt-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">👤</div>
+          <h1 className="text-lg font-black text-white truncate">{clientProfile.full_name}</h1>
+          <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">{clientProfile.phone}</p>
         </div>
-      </nav>
-
-      {/* Main Dashboard Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1 flex flex-col lg:flex-row gap-8">
-        
-        {/* Left Sidebar Menu */}
-        <aside className="lg:w-1/4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sticky top-24">
-            <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-4 px-3">Menu Yangu</h3>
-            <nav className="space-y-1">
-              <button 
-                onClick={() => setActiveTab('tracking')} 
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'tracking' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
-              >
-                <span className="flex items-center gap-3">🚢 Track My Cars</span>
-                {trackedOrders.length > 0 && <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full">{trackedOrders.length}</span>}
-              </button>
-              <button 
-                onClick={() => setActiveTab('wishlist')} 
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'wishlist' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
-              >
-                <span className="flex items-center gap-3">❤️ Saved Cars</span>
-                <span className="bg-gray-200 text-gray-600 text-[10px] px-2 py-0.5 rounded-full">{savedCars.length}</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab('payments')} 
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${activeTab === 'payments' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-600 hover:bg-gray-50'}`}
-              >
-                💵 Invoices & Escrow
-              </button>
-              
-              {/* KITUFE KIPYA: UZA GARI LAKO */}
-              <button 
-                onClick={() => setActiveTab('sell')} 
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors mt-2 ${activeTab === 'sell' ? 'bg-green-50 text-green-700 font-bold border border-green-200' : 'text-gray-600 hover:bg-green-50 border border-transparent'}`}
-              >
-                💰 Uza Gari Lako
-              </button>
-
-              <Link href="/#magari" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors mt-4 border-t border-gray-100 pt-4">
-                🛒 Endelea Kununua
-              </Link>
-            </nav>
-            
-            {/* Help Box */}
-            <div className="mt-8 bg-gray-900 rounded-lg p-4 text-white text-center">
-              <span className="text-2xl block mb-2">🎧</span>
-              <h4 className="font-bold text-sm mb-1">Unahitaji Msaada?</h4>
-              <p className="text-xs text-gray-400 mb-3">Wasiliana na wakala wako moja kwa moja.</p>
-              <button className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded transition-colors">
-                Chat on WhatsApp
-              </button>
-            </div>
+        <nav className="flex-1 p-5 space-y-2">
+          <NavItem id="overview" icon="📊" label={currT.overview} />
+          <NavItem id="orders" icon="📥" label={currT.myOrders} />
+          <NavItem id="sell" icon="💵" label={currT.sellCar} />
+          <NavItem id="sos" icon="🛠️" label={currT.sos} />
+        </nav>
+        <div className="p-5 border-t border-slate-800 space-y-3">
+          <div className="flex gap-2 justify-center mb-4">
+            <button onClick={() => setLang('en')} className={`text-xs font-bold px-4 py-1.5 rounded-lg border ${lang === 'en' ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400'}`}>EN</button>
+            <button onClick={() => setLang('sw')} className={`text-xs font-bold px-4 py-1.5 rounded-lg border ${lang === 'sw' ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-700 text-slate-400'}`}>SW</button>
           </div>
-        </aside>
+          <Link href="/" className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs uppercase transition-colors">🏠 {currT.home}</Link>
+          {/* KITUFE CHA LOGOUT KINATUMIA FUNCTION TULIYOIONGEZA HAPO JUU */}
+          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl font-bold text-xs uppercase transition-colors">🚪 {currT.logout}</button>
+        </div>
+      </aside>
 
-        {/* Right Main Content */}
-        <main className="lg:w-3/4">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-gradient-to-br from-[#0B1120] to-[#0d131f]">
+        
+        {/* MOBILE HEADER YENYE LOGOUT KWA WATU WA SIMU */}
+        <header className="md:hidden bg-[#0F172A] border-b border-slate-800 p-4 flex justify-between items-center z-10 shrink-0">
+          <h2 className="text-lg font-black text-white uppercase tracking-widest">GariHub Client</h2>
+          <button onClick={handleLogout} className="text-xs text-red-400 font-bold bg-red-500/10 px-3 py-1.5 rounded-lg">Logout</button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
           
-          {/* TAB 1: ORDER TRACKING */}
-          {activeTab === 'tracking' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-extrabold text-gray-900">Ufuatiliaji wa Magari Yako (Tracking)</h2>
-                <p className="text-gray-500 text-sm">Fuatilia hatua kwa hatua gari lako mpaka linakufikia mkononi.</p>
+          {activeTab === 'overview' && (
+            <div className="space-y-8 max-w-5xl">
+              <div><h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">{currT.welcome} <span className="text-blue-500">{clientProfile.full_name.split(' ')[0]}!</span></h2><p className="text-slate-400 mt-2 text-sm">{currT.welcomeDesc}</p></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <div className="bg-[#0F172A] border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden"><p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-2 relative z-10">{currT.statOrders}</p><h3 className="text-4xl font-black text-white relative z-10">{myInquiries.length}</h3></div>
+                <div className="bg-[#0F172A] border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden"><p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-2 relative z-10">{currT.sellCar} (Live)</p><h3 className="text-4xl font-black text-white relative z-10">{myCars.filter(c => c.approval_status === 'APPROVED').length}</h3></div>
+                <div className="bg-[#0F172A] border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden"><p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-2 relative z-10">{currT.sellCar} (Pending)</p><h3 className="text-4xl font-black text-amber-400 relative z-10">{myCars.filter(c => c.approval_status === 'PENDING').length}</h3></div>
               </div>
-              {/* Orodha ya Tracked Orders inaendelea... */}
-              {trackedOrders.map(order => (
-                  <div key={order.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50">
-                      <div className="flex items-center gap-4">
-                        <img src={order.img} alt={order.car} className="w-20 h-14 object-cover rounded border border-gray-200 shadow-sm" />
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-lg leading-tight">{order.car}</h3>
-                          <p className="text-xs text-gray-500 font-mono mt-0.5">Order ID: {order.id}</p>
-                        </div>
-                      </div>
-                      <div className="text-left sm:text-right">
-                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Estimated Arrival (ETA)</p>
-                        <p className="text-lg font-black text-blue-600">{order.eta}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="p-6 md:p-10">
-                      <div className="relative">
-                        <div className="absolute left-0 md:left-1/2 top-0 bottom-0 w-1 bg-gray-100 md:-ml-0.5 z-0 hidden md:block"></div>
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 text-center relative z-10">
-                          
-                          <div className="flex flex-row md:flex-col items-center gap-4 md:gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-4 border-white shadow-sm bg-green-500 text-white">✓</div>
-                            <div className="text-left md:text-center">
-                              <p className="text-sm font-bold text-gray-900">Purchased</p>
-                              <p className="text-[10px] text-gray-500 hidden md:block">Japan Auction</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-row md:flex-col items-center gap-4 md:gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-4 border-white shadow-sm bg-green-500 text-white">✓</div>
-                            <div className="text-left md:text-center">
-                              <p className="text-sm font-bold text-gray-900">At Port</p>
-                              <p className="text-[10px] text-gray-500 hidden md:block">Yokohama, JP</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-row md:flex-col items-center gap-4 md:gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-4 border-white shadow-sm bg-blue-600 text-white animate-pulse">3</div>
-                            <div className="text-left md:text-center">
-                              <p className="text-sm font-bold text-blue-700">On Ship</p>
-                              <p className="text-[10px] text-blue-500 font-bold hidden md:block">{order.vessel}</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-row md:flex-col items-center gap-4 md:gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-4 border-white shadow-sm bg-gray-200 text-gray-400">4</div>
-                            <div className="text-left md:text-center">
-                              <p className="text-sm font-bold text-gray-400">Clearing</p>
-                              <p className="text-[10px] text-gray-500 hidden md:block">Dar Port (TRA)</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-row md:flex-col items-center gap-4 md:gap-2">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border-4 border-white shadow-sm bg-gray-200 text-gray-400">5</div>
-                            <div className="text-left md:text-center">
-                              <p className="text-sm font-bold text-gray-400">Delivered</p>
-                              <p className="text-[10px] text-gray-500 hidden md:block">Handover</p>
-                            </div>
-                          </div>
-
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              }
             </div>
           )}
 
-          {/* TAB 2: WISHLIST (Data Kutoka Supabase) */}
-          {activeTab === 'wishlist' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-extrabold text-gray-900">Magari Yangu Niliyohifadhi (Wishlist)</h2>
-                <p className="text-gray-500 text-sm">Orodha ya magari uliyoyawekea alama ya moyo (❤️).</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {savedCars.length === 0 ? (
-                  <p className="text-gray-500">Hujasave gari lolote bado.</p>
+          {activeTab === 'orders' && (
+            <div className="max-w-5xl">
+              <h2 className="text-2xl font-black text-white tracking-tight mb-6">{currT.myOrders}</h2>
+              <div className="bg-[#0F172A] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                {myInquiries.length === 0 ? (
+                  <div className="p-16 text-center"><span className="text-5xl opacity-50 block mb-4">📥</span><p className="text-slate-400 text-sm mb-6">{currT.noData}</p></div>
                 ) : (
-                  savedCars.map(car => (
-                    <div key={car.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex">
-                      <img src={car.img} alt={car.title} className="w-1/3 object-cover" />
-                      <div className="p-4 flex-1 flex flex-col justify-between">
-                        <div>
-                          <div className="flex justify-between items-start mb-1">
-                            <h3 className="font-bold text-gray-900 text-sm">{car.title}</h3>
-                            <button className="text-red-500 hover:scale-110 transition-transform">❤️</button>
-                          </div>
-                          <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${car.status === 'HOT' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>{car.status}</span>
-                        </div>
-                        <div className="mt-4 flex justify-between items-center">
-                          <span className="font-black text-blue-600">{car.price}</span>
-                          <button className="bg-gray-900 text-white text-xs px-3 py-1.5 rounded font-bold hover:bg-black transition-colors">Inquire</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-[#0B1120] text-[10px] uppercase text-slate-500 border-b border-slate-800"><tr><th className="px-6 py-5 font-black">{currT.reqDate}</th><th className="px-6 py-5 font-black">{currT.reqDetails}</th><th className="px-6 py-5 font-black text-right">{currT.reqStatus}</th></tr></thead>
+                    <tbody>
+                      {myInquiries.map((req, idx) => (
+                        <tr key={idx} className="border-b border-slate-800"><td className="px-6 py-5">{new Date(req.created_at).toLocaleDateString()}</td><td className="px-6 py-5"><p className="font-bold text-white text-sm max-w-sm truncate">{req.customer_message}</p></td><td className="px-6 py-5 text-right"><span className="bg-amber-500/10 text-amber-500 px-3 py-1 rounded-lg text-[9px] font-black uppercase">⏳ {currT.statusPending}</span></td></tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 3: PAYMENTS / ESCROW */}
-          {activeTab === 'payments' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-extrabold text-gray-900">Ankara na Malipo (Invoices & Escrow)</h2>
-                <p className="text-gray-500 text-sm">Historia ya malipo yako yanayolindwa chini ya mfumo wa Escrow.</p>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
-                    <tr>
-                      <th className="p-4 border-b">Invoice No.</th>
-                      <th className="p-4 border-b">Description</th>
-                      <th className="p-4 border-b">Amount</th>
-                      <th className="p-4 border-b">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    <tr className="border-b border-gray-50">
-                      <td className="p-4 font-mono font-bold text-gray-700">INV-2026-001</td>
-                      <td className="p-4">Toyota Crown (Vehicle Purchase)</td>
-                      <td className="p-4 font-bold text-gray-900">$6,200.00</td>
-                      <td className="p-4">
-                        <span className="bg-green-100 text-green-700 px-2.5 py-1 rounded text-xs font-bold">Paid (In Escrow)</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: SELL A CAR (ONE-TIME SELLER) */}
+          {/* TAB: UZA GARI LAKO (SELL CAR) */}
           {activeTab === 'sell' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-              <div className="mb-6 border-b pb-4">
-                <h2 className="text-2xl font-extrabold text-gray-900 mb-2">Uza Gari Lako Fasta</h2>
-                <p className="text-gray-500 text-sm">Ingiza taarifa za gari lako. Baada ya ukaguzi mfupi, litaonekana kwenye Showroom yetu kuonwa na maelfu ya wanunuzi.</p>
+            <div className="max-w-6xl space-y-8">
+              <div>
+                <h2 className="text-2xl font-black text-white tracking-tight mb-2">{currT.sellTitle}</h2>
+                <p className="text-slate-400 text-sm">{currT.sellDesc}</p>
               </div>
 
-              <form onSubmit={submitOneTimeCar} className="space-y-5 max-w-2xl">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Picha ya Gari (Nje na Ndani)</label>
-                  <label className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
-                    {sellFile ? (
-                      <span className="text-green-600 font-bold">{sellFile.name} (Tayari)</span>
-                    ) : (
-                      <>
-                        <span className="text-3xl mb-2">📷</span>
-                        <span className="text-blue-600 font-bold text-sm">Bonyeza kuweka picha</span>
-                      </>
-                    )}
-                    <input type="file" accept="image/*" onChange={handleSellPhotoUpload} className="hidden" />
-                  </label>
-                </div>
+              {/* FOMU YA KUPANDISHA GARI */}
+              <div className="bg-[#0F172A] border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl">
+                <form onSubmit={submitSellCar} className="space-y-6">
+                  {/* Image Uploader */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3">{currT.uploadPhotos}</h4>
+                    <div className="flex flex-wrap gap-3 mb-2">
+                      {sellForm.imagePreviews.map((preview, index) => (
+                        <div key={index} className="relative w-20 h-20 rounded-xl overflow-hidden"><img src={preview} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-red-500 text-white w-5 h-5 rounded-full text-xs">✕</button></div>
+                      ))}
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-700 flex items-center justify-center hover:bg-slate-800"><input type="file" id="sellImageUpload" multiple accept="image/*" onChange={handleMultiImageSelect} className="hidden" /><label htmlFor="sellImageUpload" className="cursor-pointer text-slate-400 text-2xl">➕</label></div>
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Jina la Gari (Mfano: Toyota IST)</label>
-                    <input type="text" value={sellCar.title} onChange={(e) => setSellCar({...sellCar, title: e.target.value})} required className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:border-blue-500" />
+                  {/* Form Inputs */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.make}</label><input type="text" required value={sellForm.make} onChange={e => setSellForm({...sellForm, make: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm" placeholder="Mfano: Toyota" /></div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.carModel}</label><input type="text" required value={sellForm.model} onChange={e => setSellForm({...sellForm, model: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm" placeholder="Mfano: Premio" /></div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.year}</label><input type="number" required value={sellForm.year} onChange={e => setSellForm({...sellForm, year: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm" placeholder="2014" /></div>
+                    <div><label className="block text-[10px] font-bold text-emerald-400 uppercase mb-1">{currT.price}</label><input type="number" required value={sellForm.price} onChange={e => setSellForm({...sellForm, price: e.target.value})} className="w-full bg-[#0B1120] border border-emerald-500/50 text-white rounded-lg px-3 py-2.5 text-sm font-black" placeholder="12000000" /></div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Mwaka wa Kutengenezwa</label>
-                    <input type="number" value={sellCar.year} onChange={(e) => setSellCar({...sellCar, year: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:border-blue-500" />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Bei Unayouza (Tsh au $)</label>
-                    <input type="text" value={sellCar.price} onChange={(e) => setSellCar({...sellCar, price: e.target.value})} required placeholder="Mf. 12,000,000" className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:border-blue-500" />
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.engine}</label><input type="text" required value={sellForm.engine_cc} onChange={e => setSellForm({...sellForm, engine_cc: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm" placeholder="1500cc" /></div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.mileage}</label><input type="number" required value={sellForm.mileage} onChange={e => setSellForm({...sellForm, mileage: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm" placeholder="95000" /></div>
+                    <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{currT.trans}</label><select value={sellForm.transmission} onChange={e => setSellForm({...sellForm, transmission: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm"><option>Automatic</option><option>Manual</option></select></div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Namba ya Simu</label>
-                    <input type="text" value={sellCar.phone} onChange={(e) => setSellCar({...sellCar, phone: e.target.value})} required placeholder="07XX XXX XXX" className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:border-blue-500" />
-                  </div>
-                </div>
 
-                <div className="pt-4 border-t mt-6">
-                  <button type="submit" disabled={uploading} className="w-full sm:w-auto bg-green-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-green-700 transition-colors">
-                    {uploading ? 'Inapakia mtandaoni...' : 'Post Gari Langu Sasa 🚀'}
+                  <div>
+                    <h4 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3">Premium Features</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {CAR_FEATURES_LIST.map(feature => (
+                        <label key={feature} className="flex items-center gap-2 cursor-pointer bg-[#0B1120] p-2 rounded-lg border border-slate-700"><input type="checkbox" checked={sellForm.features.includes(feature)} onChange={() => toggleFeature(feature)} className="w-3 h-3 accent-blue-600" /><span className="text-[10px] text-slate-300 font-bold">{feature}</span></label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button type="submit" disabled={sellLoading || sellForm.imageFiles.length === 0} className="bg-blue-600 hover:bg-blue-500 text-white font-black px-8 py-3.5 rounded-xl uppercase tracking-widest text-xs shadow-lg shadow-blue-600/30 disabled:opacity-50 w-full sm:w-auto">
+                    {sellLoading ? currT.wait : currT.submitSell}
                   </button>
+                </form>
+              </div>
+
+              {/* ORODHA YA MAGARI ALIYOPANDISHA (MY CARS) */}
+              <div className="mt-10">
+                <h3 className="text-xl font-black text-white tracking-tight mb-4">My Listed Vehicles</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {myCars.length === 0 ? <p className="text-slate-500 text-sm">No vehicles listed yet.</p> : myCars.map(car => (
+                    <div key={car.id} className="bg-[#0F172A] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+                      <img src={car.location || 'https://via.placeholder.com/400x300'} className="w-full h-40 object-cover" />
+                      <div className="p-4">
+                        <div className="flex justify-between items-center mb-2"><h3 className="font-black text-white">{car.make} {car.model}</h3><span className="text-emerald-400 font-black text-xs">TZS {car.cif_price.toLocaleString()}</span></div>
+                        <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest ${car.approval_status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'}`}>
+                          {car.approval_status === 'APPROVED' ? currT.statusApproved : currT.statusWaiting}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </form>
+              </div>
             </div>
           )}
 
-        </main>
-      </div>
+          {activeTab === 'sos' && (
+            <div className="max-w-4xl">
+              <h2 className="text-2xl font-black text-white tracking-tight mb-2">{currT.sosBookTitle}</h2>
+              <p className="text-slate-400 text-sm mb-8">{currT.sosBookDesc}</p>
+              
+              <div className="bg-[#0F172A] border border-slate-800 rounded-3xl p-6 md:p-8 shadow-xl">
+                <form onSubmit={submitSosRequest} className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">{currT.carModel}</label><input type="text" required value={sosForm.carModel} onChange={(e) => setSosForm({...sosForm, carModel: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500" /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">{currT.issue}</label><select value={sosForm.issue} onChange={(e) => setSosForm({...sosForm, issue: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500"><option>General Maintenance (Service)</option><option>Dharura / Emergency Call</option><option>Pre-Purchase Inspection</option><option>Computer Diagnostics (OBD2)</option></select></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">{currT.location}</label><input type="text" required value={sosForm.location} onChange={(e) => setSosForm({...sosForm, location: e.target.value})} className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500" /></div>
+                    <div><label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">{currT.date}</label><input type="text" required value={sosForm.date} onChange={(e) => setSosForm({...sosForm, date: e.target.value})} placeholder="Leo / Today" className="w-full bg-[#0B1120] border border-slate-700 text-white rounded-xl px-4 py-3.5 outline-none focus:border-emerald-500" /></div>
+                  </div>
+                  <button type="submit" disabled={sosLoading} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-xl mt-2 uppercase tracking-widest text-xs transition-colors">{sosLoading ? currT.wait : currT.bookBtn}</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </main>
     </div>
   );
 }
