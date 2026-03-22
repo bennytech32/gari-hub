@@ -1,198 +1,304 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { supabase } from '../../lib/supabase';
 
 export default function SparesPage() {
-  const [activeCategory, setActiveCategory] = useState('ALL');
-  const [showInquiryModal, setShowInquiryModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [inquiryData, setInquiryData] = useState({ name: '', phone: '', message: 'Nahisi kuvutiwa na hiki kifaa/kipuri. Naomba kujua bei na upatikanaji wake.' });
+  const [lang, setLang] = useState<'sw' | 'en'>('en');
+  const [currency, setCurrency] = useState<'USD' | 'TZS' | 'KES' | 'UGX'>('TZS');
+  const [port, setPort] = useState<'Dar es Salaam' | 'Mombasa' | 'Maputo'>('Dar es Salaam');
 
-  // MOCK DATA: Bidhaa za Vipuri na Vifaa vya ECU/Diagnostics
-  const allProducts = [
-    { id: 1, name: "Autel MaxiIM IM608 Pro", category: "ECU & Diagnostics", price: "$2,850", img: "https://images.unsplash.com/photo-1530046339160-ce3e530c7d2f?auto=format&fit=crop&w=400&q=80", desc: "Kifaa cha kisasa cha kupogramu funguo na ECU kwa magari yote.", tag: "PRO TOOL" },
-    { id: 2, name: "Toyota Genuine Motor Oil 5W-30", category: "Service Kits", price: "$45", img: "https://images.unsplash.com/photo-1622204561331-155e88fc5d1f?auto=format&fit=crop&w=400&q=80", desc: "Oil halisi ya Toyota kwa ajili ya kulinda injini yako (Lita 4).", tag: "HOT" },
-    { id: 3, name: "KESS3 ECU & TCU Programmer", category: "ECU & Diagnostics", price: "$1,200", img: "https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&w=400&q=80", desc: "Master tool kwa ajili ya Chiptuning na ECU Remapping.", tag: "NEW" },
-    { id: 4, name: "Subaru Forester SJ Front Bumper", category: "Body Parts", price: "$320", img: "https://images.unsplash.com/photo-1605810730811-4ebc3f683e20?auto=format&fit=crop&w=400&q=80", desc: "Bumper original la mbele kwa Subaru Forester (2013-2018).", tag: "" },
-    { id: 5, name: "Brembo Ceramic Brake Pads", category: "Brakes & Suspension", price: "$85", img: "https://images.unsplash.com/photo-1600661653561-629509216228?auto=format&fit=crop&w=400&q=80", desc: "Pedi za breki zenye uwezo mkubwa wa kuhimili joto.", tag: "POPULAR" },
-    { id: 6, name: "Launch CRP919X OBD2 Scanner", category: "ECU & Diagnostics", price: "$450", img: "https://images.unsplash.com/photo-1503376713356-7871b953b92f?auto=format&fit=crop&w=400&q=80", desc: "Mashine ya kusoma hitilafu zote za gari na kufuta taa za dashboard.", tag: "" },
-    { id: 7, name: "Denso Iridium Spark Plugs (Set of 4)", category: "Engine Parts", price: "$60", img: "https://images.unsplash.com/photo-1486262715619-670810a0499b?auto=format&fit=crop&w=400&q=80", desc: "Plug za Iridium kwa mwako bora na kuokoa mafuta.", tag: "" },
-    { id: 8, name: "Mercedes W205 LED Headlights", category: "Body Parts", price: "$850", img: "https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&fit=crop&w=400&q=80", desc: "Taa za mbele za LED kwa Mercedes C-Class.", tag: "UPGRADE" },
-  ];
+  const [spares, setSpares] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const categories = ['ALL', 'ECU & Diagnostics', 'Service Kits', 'Body Parts', 'Engine Parts', 'Brakes & Suspension'];
+  // ORDER MODAL STATES
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedSpare, setSelectedSpare] = useState<any>(null);
+  const [orderData, setOrderData] = useState({ name: '', phone: '', location: '', quantity: '1', message: '' });
+  const [orderLoading, setOrderLoading] = useState(false);
 
-  const filteredProducts = activeCategory === 'ALL' 
-    ? allProducts 
-    : allProducts.filter(p => p.category === activeCategory);
+  // SEARCH & FILTER STATES
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
 
-  const handleInquire = (product: any) => {
-    setSelectedProduct(product);
-    setShowInquiryModal(true);
+  useEffect(() => {
+    fetchSpares();
+  }, []);
+
+  const fetchSpares = async () => {
+    try {
+      const { data, error } = await supabase.from('spares').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) setSpares(data);
+    } catch (err) {
+      console.error("Error fetching spares:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const submitInquiry = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert(`Asante ${inquiryData.name}. Ombi lako kuhusu ${selectedProduct.name} limepokelewa. Tutawasiliana nawe hivi punde.`);
-    setShowInquiryModal(false);
+  const submitOrder = async (e: React.FormEvent) => {
+    e.preventDefault(); setOrderLoading(true);
+    try {
+      const messagePayload = `⚙️ SPARE PART ORDER ⚙️\nKipuri: ${selectedSpare.part_name}\nIdadi: ${orderData.quantity}\nBei (Kimoja): TZS ${selectedSpare.price?.toLocaleString()}\nEneo la Kufikisha (Delivery): ${orderData.location}\nUjumbe wa Mteja: ${orderData.message}`;
+      await supabase.from('inquiries').insert([{ contact_phone: orderData.phone, customer_message: messagePayload }]);
+      
+      alert(lang === 'sw' ? "Oda yako imepokelewa kikamilifu! Wakala wetu atakupigia muda huu." : "Your order has been received! Our agent will contact you shortly.");
+      setShowOrderModal(false); setOrderData({ name: '', phone: '', location: '', quantity: '1', message: '' });
+    } catch (err) {
+      alert("Kuna kosa limetokea, jaribu tena.");
+    } finally {
+      setOrderLoading(false);
+    }
   };
+
+  const openOrder = (part: any) => {
+    setSelectedSpare(part);
+    setShowOrderModal(true);
+  };
+
+  const t = {
+    en: {
+      home: "Home", inventory: "Our Inventory", rentMenu: "Car Rental", sparesMenu: "Parts & Tools", tradeMenu: "Trade-In",
+      heroTitle: "Genuine Spares & Tools", heroDesc: "Find high-quality OEM spare parts, ECU diagnostic scanners, and professional mechanic tools for your vehicle.",
+      searchPlaceholder: "Search for a part or tool name...", filterAll: "All Parts", filterEngine: "Engine & Mechanical", filterBody: "Body Parts", filterTools: "Diagnostic Tools",
+      orderBtn: "Order Now", detailsBtn: "View Details", inStock: "In Stock", outOfStock: "Out of Stock",
+      noData: "No spare parts available in this category.",
+      modTitle: "Order Spare Part", modName: "Full Name", modPhone: "Phone Number", modLoc: "Delivery Location", modQty: "Quantity Needed", modMsg: "Additional Notes", modSubmit: "Place Order 🚀",
+      footerDesc: "Your trusted partner for importing cars, buying genuine spares, and premium rentals.",
+      quickLinks: "Quick Links", ourServices: "Our Services", contactFooter: "Contact Us", clientPortal: "Client Portal"
+    },
+    sw: {
+      home: "Mwanzo", inventory: "Magari Yetu", rentMenu: "Magari ya Kukodisha", sparesMenu: "Vipuri & Vifaa", tradeMenu: "Trade-In",
+      heroTitle: "Vipuri Original & Vifaa", heroDesc: "Pata vipuri halisi (OEM), mashine za kusoma hitilafu (Diagnostic Scanners), na vifaa vya kisasa kwa ajili ya gari lako.",
+      searchPlaceholder: "Tafuta jina la kipuri au kifaa...", filterAll: "Vipuri Vyote", filterEngine: "Engine & Mitambo", filterBody: "Body & Taa", filterTools: "Vifaa vya Ufundi (OBD2)",
+      orderBtn: "Nunua Sasa", detailsBtn: "Maelezo", inStock: "Kipo Stokini", outOfStock: "Kimeisha",
+      noData: "Hakuna vipuri kwenye kipengele hiki kwa sasa.",
+      modTitle: "Agiza Kipuri Hiki", modName: "Jina Kamili", modPhone: "Namba ya Simu", modLoc: "Eneo Lako (Delivery)", modQty: "Idadi Unayohitaji", modMsg: "Maelezo ya Ziada", modSubmit: "Tuma Oda Yangu 🚀",
+      footerDesc: "Mshirika wako namba moja kwa kuagiza magari, vipuri original, na kukodisha magari ya hadhi.",
+      quickLinks: "Viungo Muhimu", ourServices: "Huduma Zetu", contactFooter: "Wasiliana Nasi", clientPortal: "Client Portal"
+    }
+  };
+  const currentT = t[lang];
+
+  // FILTERS
+  const filteredSpares = spares.filter(part => {
+    const matchesSearch = (part.part_name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || (part.car_compatibility?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+    const matchesCategory = categoryFilter === 'All' || part.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-0 font-sans text-gray-800 relative">
+    <main className="min-h-screen bg-[#F8FAFC] pb-0 font-sans text-slate-800 relative overflow-x-hidden selection:bg-emerald-500 selection:text-white">
       
-      {/* INQUIRY MODAL */}
-      {showInquiryModal && selectedProduct && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl transform transition-all">
-            <div className="p-4 bg-gray-900 border-b flex justify-between items-center text-white">
-              <h3 className="font-bold">Agiza Kipuri / Kifaa</h3>
-              <button onClick={() => setShowInquiryModal(false)} className="text-gray-400 hover:text-red-400 font-black text-xl">&times;</button>
-            </div>
-            <div className="p-6">
-              <div className="flex gap-4 mb-6 bg-gray-50 p-3 rounded-xl border border-gray-200 items-center">
-                <img src={selectedProduct.img} alt={selectedProduct.name} className="w-16 h-16 object-cover rounded shadow-sm border border-gray-300" />
-                <div>
-                  <p className="font-bold text-gray-900 text-sm leading-tight">{selectedProduct.name}</p>
-                  <p className="text-xs text-blue-600 font-black mt-1">Makadirio: {selectedProduct.price}</p>
-                </div>
-              </div>
-              <form onSubmit={submitInquiry} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Jina Lako</label>
-                  <input type="text" required value={inquiryData.name} onChange={(e) => setInquiryData({...inquiryData, name: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Namba ya Simu</label>
-                  <input type="text" required value={inquiryData.phone} onChange={(e) => setInquiryData({...inquiryData, phone: e.target.value})} placeholder="07XX XXX XXX" className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Maelezo ya Ziada (Mf. Namba ya Chassis)</label>
-                  <textarea required value={inquiryData.message} onChange={(e) => setInquiryData({...inquiryData, message: e.target.value})} className="w-full border border-gray-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm resize-none" rows={3}></textarea>
-                </div>
-                <div className="pt-2">
-                  <button type="submit" className="w-full bg-blue-600 text-white font-black py-3.5 rounded-lg shadow-md hover:bg-blue-700 transition-colors">
-                    Tuma Ombi Sasa 🚀
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+      {/* ---------------- ORDER MODAL ---------------- */}
+      {showOrderModal && selectedSpare && (
+        <div className="fixed inset-0 bg-slate-900/70 z-[100] flex items-center justify-center p-4 backdrop-blur-md transition-all">
+           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl transform scale-100 max-h-[95vh] overflow-y-auto custom-scrollbar ring-1 ring-slate-200">
+             <div className="p-5 bg-gradient-to-r from-emerald-600 to-teal-700 flex justify-between items-center text-white sticky top-0 z-10">
+               <h3 className="font-extrabold text-lg flex items-center gap-2">⚙️ {currentT.modTitle}</h3>
+               <button onClick={() => setShowOrderModal(false)} className="text-white hover:text-emerald-200 font-black text-2xl leading-none">&times;</button>
+             </div>
+             <div className="p-6">
+               <div className="flex gap-4 mb-6 bg-emerald-50/50 p-3 rounded-2xl border border-emerald-100 items-center">
+                 <img src={selectedSpare.main_image || 'https://via.placeholder.com/150'} className="w-24 h-16 object-cover rounded-xl shadow-sm" alt="spare part" />
+                 <div>
+                   <p className="font-black text-slate-800 text-sm">{selectedSpare.part_name}</p>
+                   <p className="text-xs text-emerald-600 font-black mt-1">TZS {selectedSpare.price?.toLocaleString()}</p>
+                 </div>
+               </div>
+               <form onSubmit={submitOrder} className="space-y-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <input type="text" required value={orderData.name} onChange={(e) => setOrderData({...orderData, name: e.target.value})} placeholder={currentT.modName} className="w-full border border-gray-200 p-3.5 rounded-xl bg-gray-50 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all" />
+                   <input type="text" required value={orderData.phone} onChange={(e) => setOrderData({...orderData, phone: e.target.value})} placeholder={currentT.modPhone} className="w-full border border-gray-200 p-3.5 rounded-xl bg-gray-50 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all font-bold" />
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <div>
+                     <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1">{currentT.modLoc}</label>
+                     <input type="text" required value={orderData.location} onChange={(e) => setOrderData({...orderData, location: e.target.value})} placeholder="Mfano: Kariakoo, Dar" className="w-full border border-gray-200 p-3.5 rounded-xl bg-gray-50 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all text-slate-700" />
+                   </div>
+                   <div>
+                     <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1">{currentT.modQty}</label>
+                     <input type="number" min="1" max={selectedSpare.stock_quantity} required value={orderData.quantity} onChange={(e) => setOrderData({...orderData, quantity: e.target.value})} className="w-full border border-gray-200 p-3.5 rounded-xl bg-gray-50 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all text-slate-700 font-bold" />
+                   </div>
+                 </div>
+                 <textarea value={orderData.message} onChange={(e) => setOrderData({...orderData, message: e.target.value})} placeholder={currentT.modMsg} className="w-full border border-gray-200 p-3.5 rounded-xl bg-gray-50 text-sm resize-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white outline-none transition-all" rows={3}></textarea>
+                 
+                 <button type="submit" disabled={orderLoading} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black py-4 rounded-xl shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:-translate-y-0.5 transition-all text-xs tracking-widest uppercase mt-2">{orderLoading ? 'Sending...' : currentT.modSubmit}</button>
+               </form>
+             </div>
+           </div>
         </div>
       )}
 
-      {/* --- TOP BAR & NAVBAR --- */}
-      <div className="bg-gray-900 text-white text-xs py-2 px-4 sm:px-6 lg:px-8 flex justify-between items-center z-50 relative">
-        <div className="flex gap-4"><span>📧 info@garihub.co.tz</span><span className="hidden sm:inline">📞 +255 700 000 000</span></div>
-        <div className="flex items-center gap-3 bg-gray-800 rounded px-3 py-1">
-           <span className="text-blue-400 font-bold tracking-wider uppercase">Parts & Diagnostics Hub</span>
+      {/* ---------------- GLOBAL TOP BAR (SLIM) ---------------- */}
+      <div className="bg-slate-900 text-slate-300 text-[10px] sm:text-xs py-2 px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center z-50 relative gap-2 sm:gap-0 border-b border-slate-800 font-medium">
+        <div className="flex gap-4"><span className="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer">📧 info@garihub.co.tz</span><span className="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer">📞 +255 700 000 000</span></div>
+        <div className="flex items-center gap-2 bg-slate-800/80 rounded-full px-3 py-1 flex-wrap justify-center w-full sm:w-auto border border-slate-700/50">
+          <div className="flex items-center gap-1 pr-2 border-r border-slate-600"><span className="text-slate-500">⚓</span><select value={port} onChange={(e) => setPort(e.target.value as any)} className="bg-transparent text-blue-400 font-bold outline-none cursor-pointer"><option value="Dar es Salaam" className="bg-slate-800">Dar</option><option value="Mombasa" className="bg-slate-800">Mombasa</option></select></div>
+          <div className="flex items-center gap-1 px-2 border-r border-slate-600"><span className="text-slate-500">💵</span><select value={currency} onChange={(e) => setCurrency(e.target.value as any)} className="bg-transparent text-emerald-400 font-bold outline-none cursor-pointer"><option value="USD" className="bg-slate-800">USD</option><option value="TZS" className="bg-slate-800">TZS</option></select></div>
+          <div className="flex items-center gap-2 pl-2">
+            <button onClick={() => setLang('en')} className={`font-black transition-colors ${lang === 'en' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}>EN</button>
+            <span className="text-slate-600">|</span>
+            <button onClick={() => setLang('sw')} className={`font-black transition-colors ${lang === 'sw' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}>SW</button>
+          </div>
         </div>
       </div>
 
-      <nav className="bg-white shadow-sm w-full z-40 sticky top-0 border-b border-gray-200">
+      {/* ---------------- NAVIGATION BAR (PREMIUM GLASSMORPHISM) ---------------- */}
+      <nav className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 w-full z-40 sticky top-0 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <Link href="/" className="text-2xl font-extrabold text-blue-600 tracking-tight">Gari<span className="text-gray-900">Hub</span></Link>
-            <div className="hidden md:flex space-x-6 items-center">
-              <Link href="/" className="text-gray-500 hover:text-blue-600 px-1 py-2 font-medium text-sm">Mwanzo</Link>
-              <Link href="/#magari" className="text-gray-500 hover:text-blue-600 px-1 py-2 font-medium text-sm">Magari Yetu</Link>
-              <Link href="/spares" className="text-gray-900 border-b-2 border-blue-600 px-1 py-2 font-medium text-sm">Vipuri & Vifaa</Link>
+          <div className="flex justify-between h-16 sm:h-20 items-center">
+            <div className="flex-shrink-0 flex items-center group">
+              <Link href="/" className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tighter group-hover:scale-105 transition-transform">
+                Gari<span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-teal-600">Hub</span>
+              </Link>
             </div>
-            <div className="hidden md:flex items-center gap-3">
-              <Link href="/client" className="bg-blue-600 text-white px-5 py-2 rounded-lg font-bold hover:bg-blue-700 transition-all text-xs">Client Portal</Link>
+            <div className="hidden lg:flex space-x-6 items-center">
+              <Link href="/" className="text-slate-500 hover:text-blue-600 px-1 py-2 font-bold text-xs xl:text-sm tracking-wide uppercase transition-colors">{currentT.home}</Link>
+              <Link href="/#magari" className="text-slate-500 hover:text-blue-600 px-1 py-2 font-bold text-xs xl:text-sm tracking-wide uppercase transition-colors">{currentT.inventory}</Link>
+              <Link href="/rentals" className="text-slate-500 hover:text-red-500 px-1 py-2 font-bold text-xs xl:text-sm tracking-wide uppercase transition-colors">{currentT.rentMenu}</Link>
+              <Link href="/spares" className="text-slate-900 border-b-2 border-emerald-500 px-1 py-2 font-black transition-colors text-xs xl:text-sm tracking-wide uppercase">{currentT.sparesMenu}</Link>
+            </div>
+            <div className="flex items-center gap-3 sm:gap-5">
+              <Link href="/client" className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-black hover:from-emerald-600 hover:to-teal-700 hover:shadow-lg hover:shadow-emerald-500/30 hover:-translate-y-0.5 transition-all text-[10px] sm:text-xs uppercase tracking-widest ring-1 ring-slate-900/5">
+                {currentT.clientPortal}
+              </Link>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* --- HERO SECTION --- */}
-      <div className="bg-gradient-to-r from-gray-900 to-slate-800 text-white py-16 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <h1 className="text-4xl md:text-5xl font-black mb-4">Vipuri Original & Vifaa Vya ECU</h1>
-          <p className="text-gray-400 text-lg max-w-2xl mx-auto mb-8">Agiza vipuri halisi moja kwa moja viwandani. Pia tunatoa vifaa vya kisasa (Scanners & Programmers) kwa ajili ya mafundi na wataalam wa ECU.</p>
-          <div className="max-w-xl mx-auto relative">
-            <input type="text" placeholder="Tafuta kwa jina la kipuri, kifaa au chassis number..." className="w-full px-6 py-4 rounded-full text-gray-900 outline-none focus:ring-4 focus:ring-blue-500 shadow-lg" />
-            <button className="absolute right-2 top-2 bottom-2 bg-blue-600 px-6 rounded-full font-bold hover:bg-blue-700 transition-colors">Tafuta</button>
+      {/* ---------------- SPARES HERO SECTION ---------------- */}
+      <div className="relative bg-[#0B1120] overflow-hidden border-b border-slate-800 pt-16 pb-20 sm:pt-24 sm:pb-28 px-4 sm:px-6 lg:px-8">
+        <div className="absolute top-0 right-1/4 w-[40rem] h-[40rem] bg-emerald-500/20 rounded-full blur-[120px] pointer-events-none mix-blend-screen z-10"></div>
+        <div className="absolute inset-0 z-0">
+           <img src="https://images.unsplash.com/photo-1600705663737-0130635b7194?auto=format&fit=crop&w=2000&q=80" alt="Premium Spares" className="w-full h-full object-cover opacity-40 mix-blend-overlay" />
+           <div className="absolute inset-0 bg-gradient-to-t from-[#0B1120] via-[#0B1120]/80 to-transparent"></div>
+        </div>
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-black text-[10px] uppercase tracking-widest mb-6 backdrop-blur-md">⚙️ GariHub Auto Parts</span>
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-white leading-tight tracking-tighter mb-4 drop-shadow-lg">{currentT.heroTitle}</h1>
+          <p className="text-slate-400 text-sm sm:text-base font-medium leading-relaxed max-w-2xl mx-auto">{currentT.heroDesc}</p>
+        </div>
+      </div>
+
+      {/* ---------------- SEARCH & FILTERS BAR (FLOATING) ---------------- */}
+      <div className="relative w-full max-w-[95%] sm:max-w-4xl mx-auto px-4 -mt-8 z-30 mb-12">
+        <div className="bg-white/90 backdrop-blur-2xl rounded-2xl shadow-xl shadow-emerald-900/5 p-4 border border-emerald-100 ring-1 ring-white/50 flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-grow">
+            <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400">🔍</span>
+            <input type="text" placeholder={currentT.searchPlaceholder} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+          </div>
+          <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+            {['All', 'Engine Parts', 'Body Parts', 'Tools'].map(cat => (
+              <button key={cat} onClick={() => setCategoryFilter(cat)} className={`whitespace-nowrap px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${categoryFilter === cat ? 'bg-slate-900 text-white shadow-md' : 'bg-gray-50 text-slate-600 border border-gray-200 hover:border-slate-400'}`}>
+                {cat === 'All' ? currentT.filterAll : cat === 'Engine Parts' ? currentT.filterEngine : cat === 'Body Parts' ? currentT.filterBody : currentT.filterTools}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* --- MAIN E-COMMERCE LAYOUT --- */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col lg:flex-row gap-8">
-          
-          {/* SIDEBAR CATEGORIES */}
-          <aside className="lg:w-1/4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-24">
-              <h3 className="font-black text-gray-900 mb-6 uppercase tracking-wider text-sm">Aina za Bidhaa</h3>
-              <div className="space-y-2">
-                {categories.map(cat => (
-                  <button 
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex justify-between items-center ${activeCategory === cat ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-blue-600'}`}
-                  >
-                    {cat}
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeCategory === cat ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                      {cat === 'ALL' ? allProducts.length : allProducts.filter(p => p.category === cat).length}
+      {/* ---------------- SPARES GRID SECTION ---------------- */}
+      <div className="max-w-[95%] sm:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-20">
+        {loading ? (
+          <div className="flex justify-center py-20"><div className="animate-pulse text-emerald-500 text-6xl">⚙️</div></div>
+        ) : filteredSpares.length === 0 ? (
+          <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+            <span className="text-5xl block mb-4 opacity-30">📦</span>
+            <h3 className="text-slate-800 font-black text-lg">{currentT.noData}</h3>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {filteredSpares.map(part => (
+              <div key={part.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col group hover:shadow-2xl hover:shadow-emerald-900/10 transition-all duration-300 hover:-translate-y-1">
+                
+                <div className="relative h-48 overflow-hidden rounded-t-2xl bg-gray-100 p-4 flex items-center justify-center">
+                  <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+                    <span className={`text-white text-[9px] font-black px-2.5 py-1 rounded-md shadow-md uppercase tracking-widest ${part.condition === 'Brand New' ? 'bg-blue-600' : 'bg-orange-500'}`}>
+                      {part.condition}
                     </span>
-                  </button>
-                ))}
-              </div>
-              
-              {/* Promo Banner */}
-              <div className="mt-8 bg-gradient-to-br from-indigo-900 to-blue-900 rounded-xl p-6 text-white text-center shadow-lg">
-                <span className="text-4xl block mb-2">💻</span>
-                <h4 className="font-black text-sm mb-2">Kuwa Mtaalam wa ECU</h4>
-                <p className="text-xs text-blue-200 mb-4">Pata ushauri wa kitaalam na vifaa vya Programming kama KT200 na KESS3.</p>
-                <button className="w-full bg-white text-indigo-900 text-xs font-black py-2 rounded shadow hover:bg-gray-100">Wasiliana Nasi</button>
-              </div>
-            </div>
-          </aside>
-
-          {/* PRODUCTS GRID */}
-          <main className="lg:w-3/4">
-            <div className="flex justify-between items-end mb-6 border-b border-gray-200 pb-3">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900">{activeCategory === 'ALL' ? 'Bidhaa Zote' : activeCategory}</h2>
-                <p className="text-sm text-gray-500 mt-1">Inaonyesha bidhaa {filteredProducts.length}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProducts.map(product => (
-                <div key={product.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all flex flex-col relative group">
-                  {product.tag && (
-                    <div className={`absolute top-3 left-3 text-[9px] font-black px-2 py-1 rounded z-10 tracking-widest uppercase ${product.tag === 'HOT' ? 'bg-red-500 text-white' : product.tag === 'PRO TOOL' ? 'bg-indigo-600 text-white' : 'bg-emerald-500 text-white'}`}>
-                      {product.tag}
-                    </div>
-                  )}
-                  
-                  <div className="h-48 overflow-hidden bg-gray-100 p-4 flex items-center justify-center relative">
-                    <div className="absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center">
-                      <button onClick={() => handleInquire(product)} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all">Ulizia Bei</button>
-                    </div>
-                    <img src={product.img} alt={product.name} className="w-full h-full object-cover rounded-xl shadow-sm group-hover:scale-105 transition-transform duration-500" />
                   </div>
-                  
-                  <div className="p-5 flex-grow flex flex-col">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">{product.category}</p>
-                    <h3 className="font-black text-gray-900 leading-tight mb-2">{product.name}</h3>
-                    <p className="text-xs text-gray-500 mb-4 line-clamp-2">{product.desc}</p>
-                    
-                    <div className="mt-auto flex justify-between items-center border-t border-gray-100 pt-4">
-                      <span className="font-black text-lg text-blue-600">{product.price}</span>
-                      <button onClick={() => handleInquire(product)} className="text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded transition-colors">
-                        Inquire
-                      </button>
-                    </div>
+                  <div className="absolute top-3 right-3 z-10">
+                     {part.stock_quantity > 0 ? (
+                       <span className="bg-emerald-100 text-emerald-700 border border-emerald-200 text-[8px] font-black px-2 py-1 rounded uppercase tracking-widest">{currentT.inStock}: {part.stock_quantity}</span>
+                     ) : (
+                       <span className="bg-red-100 text-red-700 border border-red-200 text-[8px] font-black px-2 py-1 rounded uppercase tracking-widest">{currentT.outOfStock}</span>
+                     )}
                   </div>
+                  <img src={part.main_image || 'https://via.placeholder.com/400'} alt={part.part_name} className="max-h-full max-w-full object-contain group-hover:scale-110 transition-transform duration-700 drop-shadow-lg" />
                 </div>
-              ))}
-            </div>
-          </main>
-        </div>
+
+                <div className="p-5 flex flex-col flex-grow border-t border-gray-50">
+                  <div className="mb-3">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{part.category}</p>
+                    <h2 className="text-sm font-black text-slate-900 tracking-tight group-hover:text-emerald-600 transition-colors line-clamp-2" title={part.part_name}>{part.part_name}</h2>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-100 p-2 rounded-xl flex items-center gap-2 mb-4">
+                    <span className="text-slate-400 text-sm">🚘</span>
+                    <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate" title={part.car_compatibility}>{part.car_compatibility}</span>
+                  </div>
+
+                  <div className="mt-auto flex justify-between items-end mb-4">
+                    <span className="text-slate-500 text-[9px] uppercase font-black tracking-widest">Price</span>
+                    <span className="font-black text-lg text-emerald-600 leading-none">TZS {part.price?.toLocaleString()}</span>
+                  </div>
+
+                  <button onClick={() => openOrder(part)} disabled={part.stock_quantity <= 0} className={`w-full font-black py-3 rounded-xl text-xs uppercase tracking-widest transition-all flex justify-center items-center gap-2 ${part.stock_quantity > 0 ? 'bg-slate-900 text-white shadow-md hover:bg-emerald-600 hover:shadow-emerald-500/30' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                    🛒 {part.stock_quantity > 0 ? currentT.orderBtn : currentT.outOfStock}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* ---------------- PREMIUM FOOTER ---------------- */}
+      <footer className="bg-[#0B1120] text-slate-400 pt-16 pb-8 border-t-[6px] border-emerald-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12 text-center md:text-left">
+            <div className="flex flex-col items-center md:items-start">
+              <Link href="/" className="text-3xl font-black text-white tracking-tighter mb-4 inline-block">Gari<span className="text-emerald-500">Hub</span></Link>
+              <p className="text-slate-500 text-xs leading-relaxed mb-6 max-w-xs font-medium">{currentT.footerDesc}</p>
+              <div className="flex gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-400 text-sm text-white transition-all cursor-pointer shadow-sm hover:shadow-emerald-500/20">IG</div>
+                <div className="w-10 h-10 rounded-xl bg-slate-800/50 border border-slate-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-400 text-sm text-white transition-all cursor-pointer shadow-sm hover:shadow-emerald-500/20">FB</div>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-white text-[10px] sm:text-xs font-black uppercase tracking-widest mb-5">{currentT.quickLinks}</h4>
+              <ul className="space-y-3 text-[10px] sm:text-xs font-bold text-slate-500">
+                <li><Link href="/#magari" className="hover:text-blue-400 transition-colors">{currentT.inventory}</Link></li>
+                <li><Link href="/rentals" className="hover:text-red-400 transition-colors">{currentT.rentMenu}</Link></li>
+                <li><Link href="/spares" className="text-emerald-400 transition-colors">{currentT.sparesMenu}</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white text-[10px] sm:text-xs font-black uppercase tracking-widest mb-5">{currentT.ourServices}</h4>
+              <ul className="space-y-3 text-[10px] sm:text-xs font-bold text-slate-500">
+                <li><Link href="/" className="hover:text-blue-400 transition-colors">Vehicle Importation</Link></li>
+                <li><Link href="/client" className="hover:text-emerald-400 transition-colors">{currentT.clientPortal}</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white text-[10px] sm:text-xs font-black uppercase tracking-widest mb-5">{currentT.contactFooter}</h4>
+              <ul className="space-y-4 text-[10px] sm:text-xs font-bold text-slate-500 flex flex-col items-center md:items-start">
+                <li className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 text-sm">📍</div><span>Dar es Salaam, Tanzania</span></li>
+                <li className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 text-sm">📞</div><span>+255 700 000 000</span></li>
+                <li className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 text-sm">📧</div><span>info@garihub.co.tz</span></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-slate-800/50 pt-6 flex flex-col md:flex-row justify-between items-center text-[9px] sm:text-[10px] font-bold text-slate-600 gap-3">
+            <p>&copy; {new Date().getFullYear()} Gari Hub. All rights reserved.</p>
+            <div className="flex gap-5"><Link href="/" className="hover:text-slate-400 transition-colors">Terms of Service</Link><Link href="/" className="hover:text-slate-400 transition-colors">Privacy Policy</Link></div>
+          </div>
+        </div>
+      </footer>
 
     </main>
   );
